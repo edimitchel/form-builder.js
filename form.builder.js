@@ -24,6 +24,13 @@
 	 */
 	FormBuilder.defaults = {
 		timeAfterWriting : 250, //miliseconds
+		validateForm : true,
+		prefixGeneratedId : 'fb',
+		maxLengthGeneratedId : 10,
+		createId : function(name){
+			var s = name.toLowerCase().replace(/[^\w\s ]/gi, '').replace(/ /g, '');
+			return (this.prefixGeneratedId + s.charAt(0).toUpperCase() + s.substr(1)).substr(0, this.maxLengthGeneratedId);
+		},
 		field : {
 			fieldWrapper : {
 				tag : 'p',
@@ -59,10 +66,12 @@
 	 * Statuc defaults fields : can be change for render
 	 */
 	FormBuilder.defaultsFields = {
-		'input' : document.createElement('input'),
-		'textarea' : document.createElement('textarea'),
-		'button' : document.createElement('button'),
+		'input' : document.createElement('INPUT'),
+		'textarea' : document.createElement('TEXTAREA'),
+		'button' : document.createElement('BUTTON'),
 		'label' : document.createElement('LABEL'),
+		'option' : document.createElement('OPTION'),
+		'select' : document.createElement('SELECT'),
 	}
 
 	/**
@@ -113,17 +122,67 @@
 		 * @param {string|object} nameOrOptions Name or attributes of the field
 		 * @return {object} field The added field 
 		 */
-		this.field = function(type, nameOrOptions) {
+		this.field = function(type, nameOrOptions, addToStream) {
 			var field = FormBuilder.getField(type);
 			if(typeof nameOrOptions == "string" || typeof nameOrOptions == "undefined") {
-				field.setAttribute('name', nameOrOptions);
+				FormBuilder.setAttribute(field, 'name', nameOrOptions);
 			} else if(typeof nameOrOptions == "object") {
 				field.setAttributes(nameOrOptions);
+
+				if(nameOrOptions.hasOwnProperty('childrens')){
+					for(var i  = 0; i < nameOrOptions.childrens.length; i++)
+						field.appendChild(nameOrOptions.childrens[i]);
+				}
 			}
 
 			this.selected.node = field;
 
-			return this.addElement(field);
+			return addToStream == undefined || addToStream == true ? this.addElement(field) : field;
+		}
+
+		/**
+		 * update a field
+		 * @param {string} type Type of field
+		 * @param {string|object} nameOrOptions Name or attributes of the field
+		 * @return {object} field The added field 
+		 */
+		this.updateField = function(name, attributes) {
+			if(this.fields[this.indexOf(name)].isArray()){
+				return this.fields[this.indexOf(name)].filter(function(e){
+					return e.name;
+				})[0];
+			} else {
+
+				if(typeof attributes == "object") {
+					this.fields[this.indexOf(name)].setAttributes(attributes);
+
+					if(attributes.hasOwnProperty('childrens'))
+						for(var i  = 0; i < attributes.childrens.length; i++)
+							this.fields[this.indexOf(name)].appendChild(attributes.childrens[i]);
+				}
+
+				return this.fields[this.indexOf(name)];
+			}
+		}
+
+		/**
+		 * Retrieve the index of the desired field
+		 * @param {string} name Name of field
+		 * @return {int} index Index of the desired field 
+		 */
+		this.indexOf = function(name) {
+			for(var i = 0; i < this.fields.length; i++){
+				var f = this.fields[i];
+				if(f.isArray()){
+					f = f.filter(function(e){
+						return e.name;
+					})[0];
+				}
+
+				if(f.name == name)
+					return i;
+			} 
+			return -1;
 		}
 
 		/**
@@ -135,8 +194,17 @@
 		this.addElement = function(field, label) {
 			if(typeof label != "undefined") {
 				var ind = this.fields.indexOf(field);
-				this.fields.splice(ind, 0, label);
+				this.fields[ind] = [
+					label,
+					this.fields[ind]
+				];
+				//this.fields.splice(ind, 0, label);
 			} else {
+				var tA = this;
+				field.check = function(){
+					return tA.check(this);
+				};
+
 				this.fields.push(field);
 			}
 			return field;
@@ -144,11 +212,24 @@
 
 		/**
 		 * Adds an input element to the list of fields
+		 * @param {string} type The type of input (text, mail, number, etc.)
 		 * @param {string|object} nameOrOptions Name or attributes of the field
 		 * @return {object} field The added input field 
 		 */
-		this.input = function(nameOrOptions) {
-			var input = this.field('input', nameOrOptions);
+		this.input = function(type, nameOrOptions) {
+			var input;
+			if(type != undefined) {
+				if(typeof nameOrOptions == 'string') {
+					nameOrOptions = {
+						name: nameOrOptions,
+						type: type
+					}
+				} else if(typeof nameOrOptions == 'object') {
+					nameOrOptions.type = type;
+				}
+			}
+
+			input = this.field('input', nameOrOptions);
 
 			return this.selected;
 		}
@@ -167,13 +248,56 @@
 
 
 		/**
+		 * Adds a select element to the list of fields
+		 * @param {string|object} nameOrOptions Name or attributes of the field
+		 * @param {object} options Options available to the select
+		 * @return {object} field The added select field 
+		 */
+		this.select = function(nameOrOptions, options) {
+			var optionsList = [];
+			for(var i in options){
+				if(options.hasOwnProperty(i)){
+					optionsList.push(this.option(i, options[i]).node);
+				}
+			}
+
+			if(nameOrOptions.isString()){
+				nameOrOptions = {
+					name : nameOrOptions
+				};
+			}
+
+			nameOrOptions.childrens = optionsList;
+			var select = this.field('select', nameOrOptions);
+
+			return this.selected;
+		}
+
+
+		/**
+		 * Adds a option element to the list of fields
+		 * @param {string} name Name or attributes of the field
+		 * @param {string} value Value or attributes of the field
+		 * @return {object} field The added option field 
+		 */
+		this.option = function(name, value) {
+			var option = this.field('option', {
+				innerHTML: value,
+				value: name
+			}, false);
+
+			return this.selected;
+		}
+
+
+		/**
 		 * Adds a button element to the list of fields
 		 * @param {string|object} nameOrOptions Name or attributes of the field
 		 * @return {object} field The added button field 
 		 */
-		this.button = function(nameOrOptions) {
+		this.button = function(title, nameOrOptions) {
 			var button = this.field('button', nameOrOptions);
-			button.type = "submit";
+			FormBuilder.setAttribute(button, 'innerHTML', title);
 			
 			return this.selected;
 		}
@@ -187,8 +311,8 @@
 		 */
 		this.label = function(label, field) {
 			var labelNode = FormBuilder.getField('label');
-			labelNode.innerHTML = label;
-			labelNode.setAttribute('for', field.id);
+			FormBuilder.setAttribute(labelNode, 'innerHTML', label);
+			FormBuilder.setAttribute(labelNode, 'for', field.id);
 			return this.addElement(field, labelNode);
 		}
 
@@ -198,8 +322,41 @@
 		 * @param {string} label The name of the label
 		 */
 		this.selected.labelIt = function(label) {
-			this.node.id = "fb" + label.toUpperCase().replace(/[^\w\s ]/gi, '').replace(/ /g, '').substr(0, 8);
+			this.node.id = this.form.options.createId(label);
 			this.form.label(label, this.node);
+
+			return this;
+		}
+
+		/**
+		 * Select value on a select field
+		 * @param {string|array} value Value|s to select
+		 */
+		this.selected.selectValue = function(value) {
+			if(arguments.length > 2){
+				var values = [];
+				for(var i = 1; i < arguments.length; i++){
+					values.push(arguments[i]);
+				}
+
+				var childrens = [].slice.call(this.node.children);
+
+				while(this.node.firstChild != null)
+					this.node.removeChild(0);
+
+				for(var i = 0; i < childrens.length; i++){
+					if(values.indexOf(childrens[i].value) >= 0) {
+						childrens[i].selected = selected;
+					}
+					this.node.appendChild(childrens[i]);
+				}
+
+			} else {
+				var ind = [].slice.call(this.node.children).map(function(e){ return e.value; }).indexOf(value);
+
+				this.form.updateField(this.node.name).children[ind].selected = "selected";				
+			}
+
 		}
 
 		/**
@@ -211,6 +368,34 @@
 		this.selected.on = function(eventType, callback) {
 			this.form.Event().addEvent(this.node, eventType, callback);
 			return this;
+		}
+
+
+		/**
+		 * Check *element* if its valid.
+		 * @param {object} element
+		 * @return {object} validationObj The validation object with some useful information
+		 */
+		this.check = function(element){
+			var validationObj = {
+				valid : null,
+				message : null
+			};
+
+			switch(element.nodeName){
+				case 'INPUT':
+				case 'TEXTAREA':
+					if(element.pattern != undefined && element.pattern != null){
+						var r = new RegExp(element.pattern).test(element.value);
+						return r;
+					}
+					break;
+				case 'OPTION':
+
+					break;
+			}
+
+			return validationObj;
 		}
 
 		return this;
@@ -241,16 +426,30 @@
 
 			var that = this;
 			form.onsubmit = function(evt) {
-				that.onSubmit(evt, that.fields.filter(function(e) { return e.name; } ).map(function(el) {
-						var response = {
-							field : el, 
-							value : (el.value == 'undefined') ? '' : el.value,
-							name : el.name
-						}
+				var filt = function(e) { 
+					return e.name || e.isArray(); 
+				};
 
-						return response;
-					})
-				);
+				var map = function(el) {
+					if(el.isArray()){
+						el = el.filter(function(e){
+							return e.name;
+						})[0];
+					}
+
+					var response = {
+						field : el, 
+						value : (el.value == 'undefined') ? '' : el.value,
+						name : el.name
+					};
+					return response;
+				};
+
+				that.onSubmit(evt, that.fields.filter(filt).map(map));
+
+				if(that.options.validateForm){
+					that.Validator().process();
+				}
 
 				if(that.preventDefault === true)
 					evt.preventDefault();
@@ -269,7 +468,27 @@
 	 * @return {Validator} Validator the instance
 	 */
 	FormBuilder.prototype.Validator = function() {
-		// TODO
+		this.valid = true;
+		this.errors = [];
+
+		this.process = function() {
+			var valid = true;
+			var filt = function(e){
+				return e.check && e.nodeName != 'BUTTON';
+			}
+			for(var i = 0; i < this.fields.filter(filt).length; i++) {
+				var v = this.fields.filter(filt)[i].check();
+				console.log(this.fields.filter(filt)[i].check());
+				if(!v.valid){
+					this.valid = false;
+					this.errors.push({
+						field : this.fields[i],
+						message : v.message
+					})
+				}
+			}
+			this.valid = valid;
+		}
 
 		return this;
 	};
@@ -368,42 +587,72 @@
 
 		var form = this.Form().get();
 
-		for(var i in this.fields) {
-			if(this.fields.hasOwnProperty(i)) {
-				var f = this.fields[i];
-				if(f.name && this.values[f.name] != undefined) {
-					f.setAttribute('value', this.values[f.name]);
-				}
-
-				var wrap = f;
-				if(typeof this.fieldWrap != 'undefined') {
-					wrap = this.fieldWrap.cloneNode()
-					wrap.appendChild(f);
-				}
-
-				form.appendChild(wrap);
-			}
-		}
+		FormBuilder.renderFields(this, this.fields, form);
 
 		this.wrapper.appendChild(form);
 	};
 
+	FormBuilder.renderFields = function(formInstance, list, form, wrap){
+		wrap = wrap == undefined ? true : wrap;
+		
+		for(var i = 0; i < list.length; i ++) {
+			var fldWrap;
+			if(list[i] != "undefined") {
+				if(formInstance.fieldWrap != undefined) {
+					if(wrap){
+						fldWrap = formInstance.fieldWrap.cloneNode();
+					}
+				}
+
+				if(!list[i].isArray()) {
+					var f = list[i];
+					if(f.name && formInstance.values[f.name] != undefined) 
+						f.setAttribute('value', formInstance.values[f.name]);
+
+					if(wrap)
+						fldWrap.appendChild(f);
+					else 
+						fldWrap = f;
+
+				} else {
+					FormBuilder.renderFields(formInstance, list[i], fldWrap, false);
+				}
+			}
+			form.appendChild(fldWrap);
+		}
+	}
+
 	/**
-	 * Apply new attribute of an object
+	 * Apply new attributes of an object
 	 * @param {object} attributes Attributes to apply
 	 */
 	Object.prototype.setAttributes = function(attributes) {
 		for(var i in attributes) {
 			if(attributes.hasOwnProperty(i)) {
-				if(i == "innerContent")
-					this.innerHTML = attributes[i];
-				else if(i == "class")
-					this.setAttribute(i, [this.className, attributes[i]].join(' ').trim());
-				else
-					this.setAttribute(i, attributes[i]);
+				FormBuilder.setAttribute(this, i, attributes[i]);
 			}
 		}
 		return this;
+	}
+
+	/**
+	 * Apply new attribute of an object
+	 * @param {object} obj Object involved 
+	 * @param {string} name Name of the attribute
+	 * @param {object} value Value of the attribute
+	 */
+	FormBuilder.setAttribute = function(obj, name, value) {
+		if(value != undefined){
+			if(name == "innerHTML")
+				obj.innerHTML = value;
+			else if(name == "childrens")
+				obj.childrens = value;
+			else if(name == "class")
+				obj.setAttribute(name, [obj.className, value].join(' ').trim());
+			else
+				obj.setAttribute(name, value);
+		}
+		return obj;
 	}
 
 	/**
@@ -425,6 +674,14 @@
 		}
 		return this;
 	};
+
+	Object.prototype.isArray = function(){
+		return Object.prototype.toString.call(this).indexOf('Array') >= 0;
+	}
+
+	Object.prototype.isString = function(){
+		return typeof this == 'string';
+	}
 
 	context.FormBuilder = FormBuilder;
 
