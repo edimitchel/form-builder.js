@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Form Builder</title>
+        <meta charset="utf-8">
+        <!-- Latest compiled and minified CSS -->
+        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/css/bootstrap.min.css">
+    </head>
+    <body>
+        <div class="container">
+            <h1 class="text-center">Form Builder - a powerful javascript form generator</h1>
+
+            <div id="form" class="col-sm-6 col-sm-offset-3"></div>
+        </div>
+        <script src="form.builder.js"></script>
+        <script src="form.bootstrap.js"></script>
+        <script>
+            var f = new FormBuilder(null, {'username': "Michel"});
+            f.setWrapper("#form");
+            f.setOnSubmit(function (evt, fields) {
+                console.log(fields);
+            }, true);
+
+            f.Field().radio('sexe', 'm').labelIt('Sexe');
+
+            var input = f.Field().input('text', {
+                name: 'username',
+                class: 'name',
+                placeholder: 'Pseudo..'
+            }).on('keyup', function (value) {
+                console.log(value);
+            }).labelIt('Nom d\'utilisateur');
+
+            f.Field().textarea({
+                name: 'comment',
+                class: 'name',
+                placeholder: 'Commentaire..'
+            }).labelIt("Commentaire sur la personne");
+
+
+            f.Field().select({
+                name: 'note',
+                multiple: 'multiple',
+                size: 2
+            }, {
+                mauvais: "Mauvais",
+                moyen: "Moyen",
+                bien: "Bien",
+                tresbien: "Tr&egrave;s Bien"
+            }).labelIt("Note sur la personne").selectValue('bien', 'moyen');
+
+            f.Field().button('Soumettre', null);
+
+            f.render();
+        </script>
+    </body>
+</html>
